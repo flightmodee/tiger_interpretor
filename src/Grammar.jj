@@ -1,0 +1,155 @@
+// Options for JavaCC.
+options { LOOKAHEAD=1; FORCE_LA_CHECK=true; }
+// Fonction principale
+PARSER_BEGIN(Grammar)
+public class Grammar
+{
+}
+PARSER_END(Grammar)
+
+// Characters to ignore.
+SKIP: { " " | "\r" | "\t" }
+
+// Token specifications.
+TOKEN:
+{
+    < NUMBER: (<DIGIT>)+ ("." (<DIGIT>)*)? >  // A decimal number.
+|   < DIGIT: ["0"-"9"] >                      // A decimal digit.
+|   < ASSIGNEMENT: ":=" >
+| 	< PLUS: "+" >
+|   < MOINS: "-" >
+|   < FOIS: "*" >
+|   < DIVISE: "/" >
+|   < LESSTHAN: "<" >
+|   < MORETHAN: ">" >
+|   < EQUAL: "=" >
+|   < NOTEQUAL: "<>" >
+|   < QUOTE: "\"" >
+|   < LESSTHANOREQUAL: "<=" >
+|   < MORETHANOREQUAL: ">=" >
+|   < STRING: <QUOTE>(["a"-"z", "A"-"Z"])+ <QUOTE>>
+|   < IF: "if" | "IF" >
+|   < THEN: "then" | "THEN">
+|   < ELSE: "else" | "ELSE">
+|   < PRINT: "print" | "PRINT" >
+|   < VAR: "var" | "VAR">
+|   < LET: "let" | "LET">
+|   < IN: "in" | "IN" >
+|   < END: "end"|"END" >
+|   < VARNAME: (["a"-"z", "A"-"Z"])+>
+|   < LB: "(" >
+|   < RB: ")" >
+|   < EOL: "\n" >                             // End of line.
+}
+
+// Main loop: read expressions on a line until end of file.
+//     mainloop → (expression | statement <EOL>)* <EOF>
+void mainloop():
+{ Expression a; EvalVisitor v = new EvalVisitor(); PPVisitor p = new PPVisitor(); }
+{
+  (
+      a=expression(){
+        a.accept(p);
+        a.accept(v);
+        System.out.println("\n" + v.getDoubleResult());
+      }
+  (<EOL>)?)* <EOF>
+
+}
+
+Variable assignement():
+{Expression val;Token stringVarName; }
+{
+	<VAR> stringVarName = <VARNAME> <ASSIGNEMENT> val = expression()
+	{
+		return (new Variable(stringVarName.toString(),val));
+	}
+}
+
+// Expression (the axiom).
+// E -> A ('<' A | '>' A | '=')*
+Expression expression():
+{Expression a, b; Expression c = null; Binop op;Scope s = new Scope();Variable v;}
+{
+    a=add()
+    (
+        <LESSTHAN>        b=expression() {a = new Binop(a,b,"<");}
+      | <MORETHAN>        b=expression() {a = new Binop(a,b,">");}
+      | <EQUAL>           b=expression() {a = new Binop(a,b,"=");}
+      | <NOTEQUAL>        b=expression() {a = new Binop(a,b,"<>");}
+      | <LESSTHANOREQUAL> b=expression() {a = new Binop(a,b,"<=");}
+      | <MORETHANOREQUAL> b=expression() {a = new Binop(a,b,">=");}
+    )? { return (a); }
+
+    //PRINTa = new Binop(a,b,"+");
+
+    | <PRINT><LB> a = expression() <RB> 
+    {
+      return (new Print(a));
+    }
+
+    //IF
+
+    | <IF> a = expression() <THEN> b = expression() (<ELSE> c = expression())?{
+      if (c != null){
+        return new If(a, b, c);
+      }
+      else
+        return (new If(a, b, null));
+    }
+
+    |  <LET> (v=assignement() {
+      try {
+        s.addVariable(v);
+      }	
+    catch(DuplicateVariableException e) {
+      System.out.println(e.getMessage());
+    }	
+  })*
+  <IN> <END>
+
+}
+
+// add or sub.
+// A -> T ('+'T | '-'T)*
+Expression add():
+{ Expression a,b; Binop op;}
+{
+    a=num()
+    (
+        <PLUS>    b=add() {a = new Binop(a,b,"+");}
+      | <MOINS>   b=add() {a = new Binop(a,b,"-");}
+    )* { return a; }
+}
+
+// Term.
+// T -> F ('*'F | '/'F)*
+Expression num():
+{ 	Expression a,b; Binop op;}
+{
+    a=factor()
+    (
+      <FOIS>    b=factor() {a = new Binop(a,b,"*");}
+    | <DIVISE>  b=factor() {a = new Binop(a,b,"/");}
+    )* { return a; }
+}
+
+// Factor of an expression.
+// F -> <NUMBER> | "(" E ")"
+Expression factor():
+{ Token t; Expression e; Double d;}
+{
+      t=<NUMBER> {
+        return new Num(Double.parseDouble(t.toString())); }
+    | t=<STRING> {return new StringExpression(t.toString());}
+    | <LB>  e=expression() <RB> { return e;}
+	  | <MOINS> t = <NUMBER>{
+      d = Double.parseDouble(t.toString());
+      d = -d;
+      return (new Num(d));
+    }
+    | <PLUS> t = <NUMBER> {
+      return (new Num(Double.parseDouble(t.toString())));
+    }
+}
+
